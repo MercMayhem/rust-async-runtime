@@ -7,6 +7,8 @@ use std::pin::Pin;
 use futures::task::{waker, ArcWake};
 use polling::Poller;
 
+use crate::lib::reactor::Reactor;
+
 pub struct Task{
     future: Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>>,
     sender: Sender<Arc<Task>>,
@@ -22,15 +24,14 @@ impl ArcWake for Task {
 
 struct Executor {
     task_queue: Mutex<Receiver<Arc<Task>>>,
-    poller: Poller,
-    event_map: Arc<HashMap<usize, Waker>>,
+    reactor: Reactor
 }
 
 impl Executor {
-    fn new(task_queue: Receiver<Arc<Task>>, event_map: Arc<HashMap<usize, Waker>>) -> Self {
-        let poller = Poller::new().expect("Failed to create poller");
+    fn new(task_queue: Receiver<Arc<Task>>) -> Self {
+        let reactor = Reactor::new();
         let task_queue = Mutex::new(task_queue);
-        Executor { task_queue, poller, event_map }
+        Executor { task_queue, reactor }
     }
 
     fn run(&mut self) {
