@@ -1,12 +1,9 @@
-use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll};
 use std::pin::Pin;
 
 use futures::task::{waker, ArcWake};
-use polling::Poller;
-
 use crate::lib::reactor::Reactor;
 
 pub struct Task{
@@ -34,6 +31,7 @@ impl Executor {
         Executor { task_queue, reactor }
     }
 
+    // TODO: Add tracing
     fn run(&mut self) {
         loop {
             // Wait for tasks to be available
@@ -61,7 +59,8 @@ impl Executor {
                 }
             }
             
-            // TODO Need to poll for events
+            // TODO: Need to poll for events
+            self.reactor.wait_and_wake();
         }
     }
 }

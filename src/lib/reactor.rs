@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use std::sync::Arc;
 use std::task::Waker;
 
 use std::sync::Mutex;
-use polling::{AsRawSource, AsSource, Event, Poller};
+use polling::{AsRawSource, AsSource, Event, Events, Poller};
 
 pub enum IoEventType {
     Readable,
@@ -50,7 +50,7 @@ impl Reactor {
         Ok(key)
     }
 
-    // TODO - Find a way to only use key not both key and fd
+    // TODO: Find a way to only use key not both key and fd
     pub fn unregister(
         &self,
         key: usize,
@@ -62,6 +62,22 @@ impl Reactor {
         }
 
         event_map.remove(&key);
+
+        Ok(())
+    }
+
+    pub fn wait_and_wake(&self) -> Result<(), std::io::Error> {
+        let mut events = Events::new();
+        // TODO: Need to look into if timeout is required
+        self.poller.wait(&mut events, None)?;
+
+        let mut event_map = self.event_map.lock().unwrap();
+        for event in events.iter() {
+            if let Some(waker) = event_map.get(&event.key) {
+                waker.wake_by_ref();
+                event_map.remove(&event.key);
+            }
+        }
 
         Ok(())
     }
