@@ -34,7 +34,7 @@ impl Executor {
 
     pub fn init(future: Pin<Box<dyn Future<Output = ()> + Send + Sync>>) {
         let (sender, receiver) = std::sync::mpsc::channel();
-        let mut executor = Arc::new(Executor::new(receiver));
+        let executor = Arc::new(Executor::new(receiver));
         let task = Arc::new(Task {
             future: Mutex::new(Some(future)),
             sender,
@@ -166,7 +166,7 @@ mod tests {
                     println!("Step 4 in progress...");
                     // Simulate a read operation
                     let mut buf = [0; 1024];
-                    self.fd.read_exact(&mut buf).unwrap();
+                    self.fd.read(&mut buf).unwrap();
 
                     println!("Read data: {}", String::from_utf8_lossy(&buf));
                     self.state = Done;
