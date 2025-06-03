@@ -13,7 +13,7 @@ pub enum IoEventType {
 
 pub struct Reactor{
     poller: Poller,
-    event_map: Arc<Mutex<HashMap<usize, Waker>>>,
+    pub event_map: Arc<Mutex<HashMap<usize, Waker>>>,
 }
 
 impl Reactor {
@@ -82,3 +82,5 @@ impl Reactor {
         Ok(())
     }
 }
+
+// TODO: Unit tests for Reactor
