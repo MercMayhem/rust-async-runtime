@@ -1,12 +1,12 @@
-use std::sync::mpsc::{Sender, Receiver};
+use std::pin::Pin;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-use std::pin::Pin;
 
-use futures::task::{waker, ArcWake};
 use crate::lib::reactor::Reactor;
+use futures::task::{ArcWake, waker};
 
-pub struct Task{
+pub struct Task {
     // TODO: See if it can be generalized to any type of future output
     future: Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>>,
     sender: Sender<Arc<Task>>,
@@ -24,14 +24,17 @@ impl ArcWake for Task {
 // from within executor runtime
 pub struct Executor {
     task_queue: Mutex<Receiver<Arc<Task>>>,
-    reactor: Reactor
+    reactor: Reactor,
 }
 
 impl Executor {
     fn new(task_queue: Receiver<Arc<Task>>) -> Self {
         let reactor = Reactor::new();
         let task_queue = Mutex::new(task_queue);
-        Executor { task_queue, reactor }
+        Executor {
+            task_queue,
+            reactor,
+        }
     }
 
     pub fn init(future: Pin<Box<dyn Future<Output = ()> + Send + Sync>>) {
@@ -56,7 +59,6 @@ impl Executor {
             loop {
                 // Wait for tasks to be available
                 if let Ok(task) = self.task_queue.lock().unwrap().try_recv() {
-
                     // Get MutexGuard for the task's future. Need the mutex to mutate Arc.
                     let mut locked_future = task.future.lock().unwrap();
 
@@ -69,7 +71,7 @@ impl Executor {
                             Poll::Pending => {
                                 // Task is not ready, put it back in the queue
                                 Some(owned_task)
-                            },
+                            }
 
                             Poll::Ready(_) => {
                                 // Task is complete, drop it
@@ -81,7 +83,7 @@ impl Executor {
                     break;
                 }
             }
-            
+
             if self.reactor.event_map.lock().unwrap().len() > 0 {
                 self.reactor.wait_and_wake();
             } else {
@@ -94,7 +96,13 @@ impl Executor {
 // TODO: Unit tests for Executor
 #[cfg(test)]
 mod tests {
-    use std::{io::{Read, Write}, os::unix::net::UnixStream, pin::Pin, task::{Context, Poll}, thread};
+    use std::{
+        io::{Read, Write},
+        os::unix::net::UnixStream,
+        pin::Pin,
+        task::{Context, Poll},
+        thread,
+    };
 
     use crate::lib::reactor::IoEventType;
 
@@ -112,7 +120,7 @@ mod tests {
     pub struct MultiStep {
         fd: UnixStream,
         state: State,
-        key: Option<usize>
+        key: Option<usize>,
     }
 
     impl MultiStep {
@@ -120,7 +128,7 @@ mod tests {
             Self {
                 fd,
                 state: State::Step1,
-                key: None
+                key: None,
             }
         }
     }
@@ -135,31 +143,32 @@ mod tests {
                 Step1 => {
                     println!("Step 1 in progress...");
                     self.state = Step2;
-                    cx.waker().wake_by_ref();  // Simulate readiness for next step
+                    cx.waker().wake_by_ref(); // Simulate readiness for next step
                     Poll::Pending
                 }
                 Step2 => {
                     println!("Step 2 in progress...");
                     self.state = Step3;
-                    cx.waker().wake_by_ref();  // Simulate readiness again
+                    cx.waker().wake_by_ref(); // Simulate readiness again
                     Poll::Pending
                 }
                 Step3 => {
                     println!("Step 3 in progress...");
                     self.state = Step4;
                     let task: *const Task = cx.waker().data().cast();
-                    if !task.is_aligned(){
+                    if !task.is_aligned() {
                         panic!("Task is not aligned");
                     }
 
                     // Register Read event in reactor
                     unsafe {
                         let executor = (*task).executor.clone();
-                        self.key = Some(executor.reactor.register(
-                            &self.fd,
-                            IoEventType::Readable,
-                            cx.waker().clone()
-                        ).unwrap());
+                        self.key = Some(
+                            executor
+                                .reactor
+                                .register(&self.fd, IoEventType::Readable, cx.waker().clone())
+                                .unwrap(),
+                        );
                     }
 
                     Poll::Pending
@@ -174,19 +183,19 @@ mod tests {
                     self.state = Done;
 
                     let task: *const Task = cx.waker().data().cast();
-                    if !task.is_aligned(){
+                    if !task.is_aligned() {
                         panic!("Task is not aligned");
                     }
                     // Unregister the event
                     unsafe {
                         let executor = (*task).executor.clone();
-                        executor.reactor.unregister(
-                            self.key.unwrap(),
-                            &self.fd
-                        ).unwrap();
+                        executor
+                            .reactor
+                            .unregister(self.key.unwrap(), &self.fd)
+                            .unwrap();
                     }
 
-                    cx.waker().wake_by_ref();  // Simulate readiness again
+                    cx.waker().wake_by_ref(); // Simulate readiness again
                     Poll::Pending
                 }
                 Done => {
@@ -204,7 +213,7 @@ mod tests {
 
         println!("Sender: {:?}", sender.local_addr().unwrap());
         println!("Receiver: {:?}", receiver.local_addr().unwrap());
-        
+
         let future = Box::pin(MultiStep::new(receiver));
         let handle = thread::spawn(|| {
             Executor::init(future);

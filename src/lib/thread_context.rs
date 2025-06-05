@@ -1,9 +1,9 @@
-use std::{sync::Arc, thread_local};
 use std::sync::Mutex;
+use std::{sync::Arc, thread_local};
 
 use super::reactor::Reactor;
 
-pub struct ThreadContext{
+pub struct ThreadContext {
     reactor: Arc<Reactor>,
 }
 
@@ -24,9 +24,7 @@ pub fn set_thread_context() -> ThreadContextGuard {
         old
     });
 
-    ThreadContextGuard {
-        old_context
-    }
+    ThreadContextGuard { old_context }
 }
 
 fn reset_thread_context(old_context: Option<ThreadContext>) {

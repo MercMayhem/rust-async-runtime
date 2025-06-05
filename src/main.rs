@@ -1,5 +1,1 @@
-mod lib;
-
-fn main() {
-}
-
+fn main() {}

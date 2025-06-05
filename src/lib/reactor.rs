@@ -1,9 +1,9 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::task::Waker;
 
-use std::sync::Mutex;
 use polling::{AsRawSource, AsSource, Event, Events, Poller};
+use std::sync::Mutex;
 
 pub enum IoEventType {
     Readable,
@@ -11,7 +11,7 @@ pub enum IoEventType {
     ReadableWritable,
 }
 
-pub struct Reactor{
+pub struct Reactor {
     poller: Poller,
     pub event_map: Arc<Mutex<HashMap<usize, Waker>>>,
 }
@@ -31,15 +31,12 @@ impl Reactor {
     ) -> Result<usize, std::io::Error> {
         let mut event_map = self.event_map.lock().unwrap();
         // Generate key using max key value + 1
-        let key = event_map.keys()
-            .max()
-            .map(|max| *max)
-            .unwrap_or(0) + 1;
+        let key = event_map.keys().max().map(|max| *max).unwrap_or(0) + 1;
 
         let event = match event_type {
             IoEventType::Readable => Event::readable(key),
             IoEventType::Writable => Event::writable(key),
-            IoEventType::ReadableWritable => Event::all(key)
+            IoEventType::ReadableWritable => Event::all(key),
         };
         unsafe {
             self.poller.add(fd, event)?;
@@ -51,11 +48,7 @@ impl Reactor {
     }
 
     // TODO: Find a way to only use key not both key and fd
-    pub fn unregister(
-        &self,
-        key: usize,
-        fd: impl AsSource,
-    ) -> Result<(), std::io::Error> {
+    pub fn unregister(&self, key: usize, fd: impl AsSource) -> Result<(), std::io::Error> {
         let mut event_map = self.event_map.lock().unwrap();
         if let Some(_) = event_map.remove(&key) {
             self.poller.delete(fd)?;
