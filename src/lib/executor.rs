@@ -20,6 +20,8 @@ impl ArcWake for Task {
     }
 }
 
+// TODO: transfer reactor to thread local storage and add a guard to enusure it is only accessed
+// from within executor runtime
 pub struct Executor {
     task_queue: Mutex<Receiver<Arc<Task>>>,
     reactor: Reactor
