@@ -3,8 +3,9 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-use crate::lib::reactor::Reactor;
 use futures::task::{ArcWake, waker};
+
+use super::thread_context::{CONTEXT, set_thread_context};
 
 pub struct Task {
     // TODO: See if it can be generalized to any type of future output
@@ -20,21 +21,14 @@ impl ArcWake for Task {
     }
 }
 
-// TODO: transfer reactor to thread local storage and add a guard to enusure it is only accessed
-// from within executor runtime
 pub struct Executor {
     task_queue: Mutex<Receiver<Arc<Task>>>,
-    reactor: Reactor,
 }
 
 impl Executor {
     fn new(task_queue: Receiver<Arc<Task>>) -> Self {
-        let reactor = Reactor::new();
         let task_queue = Mutex::new(task_queue);
-        Executor {
-            task_queue,
-            reactor,
-        }
+        Executor { task_queue }
     }
 
     pub fn init(future: Pin<Box<dyn Future<Output = ()> + Send + Sync>>) {
@@ -55,6 +49,7 @@ impl Executor {
 
     // TODO: Add tracing
     fn run(&self) {
+        let _guard = set_thread_context();
         loop {
             loop {
                 // Wait for tasks to be available
@@ -84,16 +79,26 @@ impl Executor {
                 }
             }
 
-            if self.reactor.event_map.lock().unwrap().len() > 0 {
-                self.reactor.wait_and_wake();
-            } else {
+            if CONTEXT.with(|thread_context| {
+                if let Some(context) = thread_context.lock().unwrap().as_ref() {
+                    if context.reactor.event_map.lock().unwrap().len() > 0 {
+                        // TODO: Perform better error handling
+                        let _ = context.reactor.wait_and_wake();
+                    } else {
+                        return true;
+                    }
+                } else {
+                    panic!("No reactor found in thread context. This is a bug.");
+                }
+
+                false
+            }) {
                 break;
             }
         }
     }
 }
 
-// TODO: Unit tests for Executor
 #[cfg(test)]
 mod tests {
     use std::{
@@ -104,7 +109,7 @@ mod tests {
         thread,
     };
 
-    use crate::lib::reactor::IoEventType;
+    use crate::lib::{reactor::IoEventType, thread_context::CONTEXT};
 
     use super::{Executor, Task};
 
@@ -155,21 +160,19 @@ mod tests {
                 Step3 => {
                     println!("Step 3 in progress...");
                     self.state = Step4;
-                    let task: *const Task = cx.waker().data().cast();
-                    if !task.is_aligned() {
-                        panic!("Task is not aligned");
-                    }
 
-                    // Register Read event in reactor
-                    unsafe {
-                        let executor = (*task).executor.clone();
-                        self.key = Some(
-                            executor
-                                .reactor
-                                .register(&self.fd, IoEventType::Readable, cx.waker().clone())
-                                .unwrap(),
-                        );
-                    }
+                    CONTEXT.with(|thread_context| {
+                        if let Some(context) = thread_context.lock().unwrap().as_ref() {
+                            self.key = Some(
+                                context
+                                    .reactor
+                                    .register(&self.fd, IoEventType::Readable, cx.waker().clone())
+                                    .unwrap(),
+                            );
+                        } else {
+                            panic!("No reactor found in thread context. This is a bug.");
+                        }
+                    });
 
                     Poll::Pending
                 }
@@ -182,18 +185,18 @@ mod tests {
                     println!("Read data: {}", String::from_utf8_lossy(&buf));
                     self.state = Done;
 
-                    let task: *const Task = cx.waker().data().cast();
-                    if !task.is_aligned() {
-                        panic!("Task is not aligned");
-                    }
-                    // Unregister the event
-                    unsafe {
-                        let executor = (*task).executor.clone();
-                        executor
-                            .reactor
-                            .unregister(self.key.unwrap(), &self.fd)
-                            .unwrap();
-                    }
+                    // TODO: create a generic function which automatically panics if no reactor is
+                    // found. To avoid repeating this code.
+                    CONTEXT.with(|thread_context| {
+                        if let Some(context) = thread_context.lock().unwrap().as_ref() {
+                            context
+                                .reactor
+                                .unregister(self.key.unwrap(), &self.fd)
+                                .unwrap();
+                        } else {
+                            panic!("No reactor found in thread context. This is a bug.");
+                        }
+                    });
 
                     cx.waker().wake_by_ref(); // Simulate readiness again
                     Poll::Pending
@@ -223,5 +226,19 @@ mod tests {
         sender.write_all(b"Hello, world!").unwrap();
         println!("Data sent!");
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn test_thread_local_context_integration() {
+        assert!(CONTEXT.with(|thread_context| thread_context.lock().unwrap().is_none()));
+
+        Executor::init(Box::pin(async {
+            CONTEXT.with(|thread_context| {
+                let context = thread_context.lock().unwrap();
+                assert!(context.is_some(), "Thread context should be set");
+            });
+        }));
+
+        assert!(CONTEXT.with(|thread_context| thread_context.lock().unwrap().is_none()));
     }
 }
