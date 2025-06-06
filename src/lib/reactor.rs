@@ -76,8 +76,6 @@ impl Reactor {
     }
 }
 
-// TODO: Unit tests for Reactor
-//
 #[cfg(test)]
 pub mod tests {
     use super::*;
