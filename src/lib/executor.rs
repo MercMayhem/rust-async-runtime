@@ -25,6 +25,7 @@ pub struct Executor {
     task_queue: Mutex<Receiver<Arc<Task>>>,
 }
 
+// TODO: Create static methods for Executor to access reactor and thread context
 impl Executor {
     fn new(task_queue: Receiver<Arc<Task>>) -> Self {
         let task_queue = Mutex::new(task_queue);
@@ -111,7 +112,7 @@ mod tests {
 
     use crate::lib::{reactor::IoEventType, thread_context::CONTEXT};
 
-    use super::{Executor, Task};
+    use super::Executor;
 
     enum State {
         Step1,

@@ -77,3 +77,22 @@ impl Reactor {
 }
 
 // TODO: Unit tests for Reactor
+//
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reactor_register_unregister() {
+        let reactor = Reactor::new();
+        let fd = std::os::unix::net::UnixStream::pair().unwrap().0;
+
+        let waker = futures::task::noop_waker();
+        let key = reactor.register(&fd, IoEventType::Readable, waker).unwrap();
+
+        assert!(reactor.event_map.lock().unwrap().contains_key(&key));
+
+        reactor.unregister(key, fd).unwrap();
+        assert!(!reactor.event_map.lock().unwrap().contains_key(&key));
+    }
+}
