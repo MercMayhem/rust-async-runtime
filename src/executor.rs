@@ -110,7 +110,7 @@ mod tests {
         thread,
     };
 
-    use crate::lib::{reactor::IoEventType, thread_context::CONTEXT};
+    use crate::{reactor::IoEventType, thread_context::CONTEXT};
 
     use super::Executor;
 
