@@ -1,12 +1,14 @@
-[package]
-name = "async-runtime"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+    "./ar-core",
+    "./macros",
+]
 
-[dependencies]
+resolver = "3"
+
+
+[workspace.dependencies]
 futures = "0.3.31"
 polling = "3.7.4"
-
-[dev-dependencies]
 once_cell = "1.21.3"
 nix = "0.30.1"
